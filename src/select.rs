@@ -85,15 +85,15 @@ selecter!(5, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5);
 selecter!(6, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6);
 selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7);
 
-// 31 bit Lehmer RNG.
 #[doc(hidden)]
 pub fn random(bounds: impl std::ops::RangeBounds<u32>) -> u32 {
     use std::cell::RefCell;
-    use std::time::{Duration, SystemTime};
+    use std::time::SystemTime;
 
     thread_local!(static RNG: RefCell<u64> = {
-        let d = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::from_millis(42));
-        RefCell::new(((d.as_secs() as u64) ^ (d.subsec_nanos() as u64)) % 0x7fffffff | 1u64)
+        // get seed from clock.
+        let d = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
+        RefCell::new(d.map(|d| d.as_micros() as u64).unwrap_or(1611135316))
     });
 
     fn bound(b: std::ops::Bound<&u32>, u: u32) -> u32 {
@@ -103,14 +103,17 @@ pub fn random(bounds: impl std::ops::RangeBounds<u32>) -> u32 {
             std::ops::Bound::Unbounded => u,
         }
     }
-
     let start = bound(bounds.start_bound(), 0);
     let end = bound(bounds.end_bound(), u32::MAX);
     let range = end - start + 1;
 
     RNG.with(|state| {
+        // Knuth MMIX RNG.
+        const A: u64 = 6364136223846793005;
+        const C: u64 = 1442695040888963407;
         let mut state = state.borrow_mut();
-        *state = *state * 48271 % 0x7fffffff;
-        start + ((*state << 32) / ((1u64 << 63) / (range as u64))) as u32
+        *state = ((*state).wrapping_add(C)).wrapping_mul(A);
+        // map bits 47..0 to a 32 bit number.
+        start + (((*state & (1 << 48) - 1)) / ((1 << 48) / (range as u64))) as u32
     })
 }
