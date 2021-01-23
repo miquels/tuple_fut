@@ -16,17 +16,15 @@ async fn wait2(t: u64) -> &'static str {
 
 #[tokio::main]
 async fn main() {
-    tokio::pin! {
-        let f1 = wait1(2);
-        let f2 = wait2(100);
-    }
+    println!("join example");
+    let f1 = wait1(2);
+    let f2 = wait2(100);
     let r = (f1, f2).join().await;
     println!("{:?}", r);
 
-    tokio::pin! {
-        let f1 = wait1(100);
-        let f2 = wait2(2).map(|s| s.len() as u64);
-    }
+    println!("select example");
+    let f1 = wait1(100);
+    let f2 = wait2(2).map(|s| s.len() as u64);
     let r = (f1, f2).select().await;
     println!("{:?}", r);
 }

@@ -8,10 +8,28 @@
 //!
 //! ### Example
 //!
-//! ```no_run
+//! ```rust
 //! use tuple_fut::Select;
 //!
-//! let result = (fut1, fut2, fut3).select().await;
+//! async fn ret11() -> u32 {
+//!   11
+//! }
+//!
+//! async fn ret23() -> u32 {
+//!   23
+//! }
+//!
+//! async fn ret42() -> u32 {
+//!   42
+//! }
+//!
+//! # fn main() {
+//! #     futures::executor::block_on(async {
+//! let result = (ret11(), ret23(), ret42()).select().await;
+//! println!("{}", result);
+//! assert!(result == 11 || result == 23 || result == 42);
+//! #     });
+//! # }
 //! ```
 //!
 //! # Join
@@ -21,41 +39,34 @@
 //!
 //! ### Example
 //!
-//! ```no_run
+//! ```rust
 //! use tuple_fut::Join;
 //!
-//! let (res1, res2, res3) = (fut1, fut2, fut3).join().await;
+//! async fn ret_u32() -> u32 {
+//!   23u32
+//! }
+//!
+//! async fn ret_f64() -> f64 {
+//!   42f64
+//! }
+//!
+//! async fn ret_string() -> String {
+//!   String::from("hello")
+//! }
+//!
+//! # fn main() {
+//! #     futures::executor::block_on(async {
+//! let result = (ret_u32(), ret_f64(), ret_string()).join().await;
+//! println!("{:?}", result);
+//! assert!(result == (23u32, 42f64, String::from("hello")));
+//! #     });
+//! # }
 //! ```
 //!
 //! # Caveats.
 //!
-//! All futures must be `Unpin`. That means you cannot use an async
-//! function directly as future in a tuple. You need to pin it first,
-//! for example by using [tokio::pin](https://docs.rs/tokio/1.0/tokio/macro.pin.html)
-//! or [futures::pin_mut](https://docs.rs/futures/0.3/futures/macro.pin_mut.html).
-//!
-//! ### Example
-//!
-//! ```no_run
-//! use tuple_fut::Select;
-//!
-//! async fn foo() -> u32 {
-//!     42
-//! }
-//!
-//! async fn bar() -> u32 {
-//!     23
-//! }
-//!
-//! async fn something() -> u32 {
-//!     tokio::pin {
-//!         let foo = foo();
-//!         let bar = bar();
-//!     }
-//!
-//!     (foo, bar).select().await
-//! }
-//! ```
+//! Due to a restriction in Rust's type system, these traits are only implemented on
+//! tuples of arity 12 or less. 
 #[doc(hidden)]
 pub mod join;
 #[doc(hidden)]

@@ -5,12 +5,12 @@ use std::task::{Context, Poll};
 
 /// Extension trait so you can call select() on a tuple of futures.
 ///
-/// This is implemented on tuples from 1 to 8 values.
+/// This is only implemented on tuples of arity 12 and less.
 pub trait Select {
-    type F: Future<Output=Self::O> + Unpin;
-    type O: Unpin;
+    type Future: Future<Output=Self::Output>;
+    type Output;
 
-    fn select(self) -> Self::F;
+    fn select(self) -> Self::Future;
 }
 
 #[doc(hidden)]
@@ -19,33 +19,32 @@ pub struct Selecter<T, O> {
     output: PhantomData<O>,
 }
 
-macro_rules! dopoll {
-    ($fut: expr, $cx: expr) => {
-        match Pin::new(&mut $fut).poll($cx) {
-            r @ Poll::Ready(_) => return r,
-            Poll::Pending => {},
-        }
-    }
-}
-
 macro_rules! selecter {
     ($num:expr, $($F:ident, $N:tt),*) => {
         impl<$($F),*, O> Future for Selecter<($($F,)*), O>
         where
-            $($F: Future<Output=O> + Unpin),*,
-            O: Unpin,
+            $($F: Future<Output=O>),*,
         {
             type Output = O;
     
-            fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 
                 // choose a random future to start with.
                 let start = $crate::select::random(..=$num);
                 let mut cur = start;
+                // Safety: `Selecter` is !Unpin if any of its members are.
+                let this = unsafe { self.get_unchecked_mut() };
                 loop {
                     match cur {
                         $(
-                            $N => dopoll!(self.as_mut().tuples.$N, cx),
+                            $N => {
+                                // Safety: `Selecter` is !Unpin if any of its members are.
+                                let fut = unsafe { Pin::new_unchecked(&mut this.tuples.$N) };
+                                match fut.poll(cx) {
+                                    r @ Poll::Ready(_) => return r,
+                                    Poll::Pending => {},
+                                }
+                            },
                         )*
                         _ => unreachable!(),
                     }
@@ -60,30 +59,26 @@ macro_rules! selecter {
 
         impl<$($F),*, O> Select for ($($F,)*)
         where
-            $($F: Future<Output=O> + Unpin),*,
-            O: Unpin,
+            $($F: Future<Output=O> ),*,
         {
-            type F = Selecter<($($F,)*), O>;
-            type O = O;
+            type Future = Selecter<($($F,)*), O>;
+            type Output = O;
     
-            fn select(self) -> Self::F {
+            fn select(self) -> Self::Future {
                 Selecter {
                     tuples: ($(self.$N,)*),
                     output: PhantomData,
                 }
             }
         }
+
+        impl<$($F),*, O> Unpin for Selecter<($($F,)*), O>
+        where
+            $($F: Future<Output=O> + Unpin),*,
+            O: Unpin,
+        {}
     }
 }
-
-selecter!(0, F0, 0);
-selecter!(1, F0, 0, F1, 1);
-selecter!(2, F0, 0, F1, 1, F2, 2);
-selecter!(3, F0, 0, F1, 1, F2, 2, F3, 3);
-selecter!(4, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4);
-selecter!(5, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5);
-selecter!(6, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6);
-selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7);
 
 #[doc(hidden)]
 pub fn random(bounds: impl std::ops::RangeBounds<u32>) -> u32 {
@@ -117,3 +112,16 @@ pub fn random(bounds: impl std::ops::RangeBounds<u32>) -> u32 {
         start + (((*state & (1 << 48) - 1)) / ((1 << 48) / (range as u64))) as u32
     })
 }
+
+selecter!(0, F0, 0);
+selecter!(1, F0, 0, F1, 1);
+selecter!(2, F0, 0, F1, 1, F2, 2);
+selecter!(3, F0, 0, F1, 1, F2, 2, F3, 3);
+selecter!(4, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4);
+selecter!(5, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5);
+selecter!(6, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6);
+selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7);
+selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8);
+selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9);
+selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9, F10, 10);
+selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9, F10, 10, F11, 11);
