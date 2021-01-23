@@ -67,9 +67,7 @@
 //!
 //! Due to a restriction in Rust's type system, these traits are only implemented on
 //! tuples of arity 12 or less. 
-#[doc(hidden)]
 pub mod join;
-#[doc(hidden)]
 pub mod select;
 
 #[doc(inline)]

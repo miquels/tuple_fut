@@ -11,27 +11,29 @@ pub trait Join {
     fn join(self) -> Self::Future;
 }
 
-#[doc(hidden)]
-pub enum FutStatus<F, O> {
+/// Implementation detail, but needs to be visible.
+pub struct JoinFutureStatus<F: Future>(FutStatus<F, F::Output>);
+
+enum FutStatus<F, O> {
     Future(F),
     Output(O),
     Empty,
 }
 
-#[doc(hidden)]
-pub struct Joiner<T> {
+/// Future returned by the `join()` method.
+pub struct JoinFuture<T> {
     tuples: T,
 }
 
 macro_rules! dopoll {
     ($tuple:expr, $cx:expr) => {
         match $tuple {
-            FutStatus::Future(fut) => {
-                // Safety: `Joiner` is !Unpin if any of its members are.
+            FutStatus::Future(ref mut fut) => {
+                // Safety: `JoinFuture` is !Unpin if any of its members are.
                 let f = unsafe { Pin::new_unchecked(fut) };
                 match f.poll($cx) {
                     Poll::Ready(r) => {
-                        *$tuple = FutStatus::Output(r);
+                        $tuple = FutStatus::Output(r);
                         true
                     }
                     Poll::Pending => false,
@@ -52,9 +54,9 @@ macro_rules! output {
     }
 }
 
-macro_rules! joiner {
-    ($($F:ident, $O:ident, $N:tt),*) => {
-        impl<$($F),*> Future for Joiner<($(FutStatus<$F, $F::Output>,)*)>
+macro_rules! join_impl {
+    ($($F:ident, $N:tt),*) => {
+        impl<$($F),*> Future for JoinFuture<($(JoinFutureStatus<$F>,)*)>
         where
             $($F: Future,)*
         {
@@ -62,13 +64,13 @@ macro_rules! joiner {
     
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
                 let mut done = true;
-                // Safety: `Joiner` is !Unpin if any of its members are.
+                // Safety: `JoinFuture` is !Unpin if any of its members are.
                 let this = unsafe { self.get_unchecked_mut() };
                 $(
-                    done &= dopoll!(&mut this.tuples.$N, cx);
+                    done &= dopoll!(this.tuples.$N.0, cx);
                 )*
                 if done {
-                    Poll::Ready(($(output!(this.tuples.$N),)*)) 
+                    Poll::Ready(($(output!(this.tuples.$N.0),)*)) 
                 } else {
                     Poll::Pending
                 }
@@ -79,16 +81,17 @@ macro_rules! joiner {
         where
             $($F: Future,)*
         {
-            type Future = Joiner<($(FutStatus<$F, $F::Output>,)*)>;
+            type Future = JoinFuture<($(JoinFutureStatus<$F>,)*)>;
     
+            /// (fut1, fut2, fut3).join().await
             fn join(self) -> Self::Future {
-                Joiner {
-                    tuples: ($(FutStatus::Future(self.$N), )*)
+                JoinFuture {
+                    tuples: ($(JoinFutureStatus(FutStatus::Future(self.$N)), )*)
                 }
             }
         }
 
-        impl<$($F),*> Unpin for Joiner<($(FutStatus<$F, $F::Output>,)*)>
+        impl<$($F),*> Unpin for JoinFuture<($(JoinFutureStatus<$F>,)*)>
         where
         $(
             $F: Future + Unpin,
@@ -97,15 +100,15 @@ macro_rules! joiner {
     }
 }
 
-joiner!(F0, O0, 0);
-joiner!(F0, O0, 0, F1, O1, 1);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3, F4, O4, 4);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3, F4, O4, 4, F5, O5, 5);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3, F4, O4, 4, F5, O5, 5, F6, O6, 6);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3, F4, O4, 4, F5, O5, 5, F6, O6, 6, F7, O7, 7);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3, F4, O4, 4, F5, O5, 5, F6, O6, 6, F7, O7, 7, F8, O8, 8);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3, F4, O4, 4, F5, O5, 5, F6, O6, 6, F7, O7, 7, F8, O8, 8, F9, O9, 9);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3, F4, O4, 4, F5, O5, 5, F6, O6, 6, F7, O7, 7, F8, O8, 8, F9, O9, 9, F10, I10, 10);
-joiner!(F0, O0, 0, F1, O1, 1, F2, O2, 2, F3, O3, 3, F4, O4, 4, F5, O5, 5, F6, O6, 6, F7, O7, 7, F8, O8, 8, F9, O9, 9, F10, I10, 10, F11, O11, 11);
+join_impl!(F0, 0);
+join_impl!(F0, 0, F1, 1);
+join_impl!(F0, 0, F1, 1, F2, 2);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3, F4, 4);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9, F10, 10);
+join_impl!(F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9, F10, 10, F11, 11);

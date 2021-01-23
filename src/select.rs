@@ -12,14 +12,14 @@ pub trait Select {
     fn select(self) -> Self::Future;
 }
 
-#[doc(hidden)]
-pub struct Selecter<T> {
+/// Future returned by the `select()` method.
+pub struct SelectFuture<T> {
     tuples: T,
 }
 
-macro_rules! selecter {
+macro_rules! select_impl {
     ($num:expr, $($F:ident, $N:tt),*) => {
-        impl<$($F),*, O> Future for Selecter<($($F,)*)>
+        impl<$($F),*, O> Future for SelectFuture<($($F,)*)>
         where
             $($F: Future<Output=O>),*,
         {
@@ -28,15 +28,15 @@ macro_rules! selecter {
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 
                 // choose a random future to start with.
-                let start = $crate::select::random(..=$num);
+                let start = random(..=$num);
                 let mut cur = start;
-                // Safety: `Selecter` is !Unpin if any of its members are.
+                // Safety: `SelectFuture` is !Unpin if any of its members are.
                 let this = unsafe { self.get_unchecked_mut() };
                 loop {
                     match cur {
                         $(
                             $N => {
-                                // Safety: `Selecter` is !Unpin if any of its members are.
+                                // Safety: `SelectFuture` is !Unpin if any of its members are.
                                 let fut = unsafe { Pin::new_unchecked(&mut this.tuples.$N) };
                                 match fut.poll(cx) {
                                     r @ Poll::Ready(_) => return r,
@@ -59,25 +59,25 @@ macro_rules! selecter {
         where
             $($F: Future<Output=O> ),*,
         {
-            type Future = Selecter<($($F,)*)>;
+            type Future = SelectFuture<($($F,)*)>;
             type Output = O;
     
+            /// (fut1, fut2, fut3).select().await
             fn select(self) -> Self::Future {
-                Selecter {
+                SelectFuture {
                     tuples: ($(self.$N,)*),
                 }
             }
         }
 
-        impl<$($F),*> Unpin for Selecter<($($F,)*)>
+        impl<$($F),*> Unpin for SelectFuture<($($F,)*)>
         where
             $($F: Future + Unpin),*,
         {}
     }
 }
 
-#[doc(hidden)]
-pub fn random(bounds: impl std::ops::RangeBounds<u32>) -> u32 {
+fn random(bounds: impl std::ops::RangeBounds<u32>) -> u32 {
     use std::cell::RefCell;
     use std::time::SystemTime;
 
@@ -109,15 +109,15 @@ pub fn random(bounds: impl std::ops::RangeBounds<u32>) -> u32 {
     })
 }
 
-selecter!(0, F0, 0);
-selecter!(1, F0, 0, F1, 1);
-selecter!(2, F0, 0, F1, 1, F2, 2);
-selecter!(3, F0, 0, F1, 1, F2, 2, F3, 3);
-selecter!(4, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4);
-selecter!(5, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5);
-selecter!(6, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6);
-selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7);
-selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8);
-selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9);
-selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9, F10, 10);
-selecter!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9, F10, 10, F11, 11);
+select_impl!(0, F0, 0);
+select_impl!(1, F0, 0, F1, 1);
+select_impl!(2, F0, 0, F1, 1, F2, 2);
+select_impl!(3, F0, 0, F1, 1, F2, 2, F3, 3);
+select_impl!(4, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4);
+select_impl!(5, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5);
+select_impl!(6, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6);
+select_impl!(7, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7);
+select_impl!(8, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8);
+select_impl!(9, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9);
+select_impl!(10, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9, F10, 10);
+select_impl!(11, F0, 0, F1, 1, F2, 2, F3, 3, F4, 4, F5, 5, F6, 6, F7, 7, F8, 8, F9, 9, F10, 10, F11, 11);
