@@ -6,8 +6,7 @@ use std::task::{Context, Poll};
 ///
 /// This is only implemented on tuples of arity 12 or less.
 pub trait Join {
-    type Future: Future<Output=Self::Output>;
-    type Output;
+    type Future: Future;
 
     fn join(self) -> Self::Future;
 }
@@ -55,11 +54,11 @@ macro_rules! output {
 
 macro_rules! joiner {
     ($($F:ident, $O:ident, $N:tt),*) => {
-        impl<$($F, $O),*> Future for Joiner<($(FutStatus<$F, $O>,)*)>
+        impl<$($F),*> Future for Joiner<($(FutStatus<$F, $F::Output>,)*)>
         where
-            $($F: Future<Output=$O>,)*
+            $($F: Future,)*
         {
-            type Output = ($($O,)*);
+            type Output = ($($F::Output,)*);
     
             fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
                 let mut done = true;
@@ -76,12 +75,11 @@ macro_rules! joiner {
             }
         }
 
-        impl<$($F, $O),*> Join for ($($F,)*)
+        impl<$($F),*> Join for ($($F,)*)
         where
-            $($F: Future<Output=$O>,)*
+            $($F: Future,)*
         {
-            type Future = Joiner<($(FutStatus<$F, $O>,)*)>;
-            type Output = ($($O,)*);
+            type Future = Joiner<($(FutStatus<$F, $F::Output>,)*)>;
     
             fn join(self) -> Self::Future {
                 Joiner {
@@ -90,11 +88,10 @@ macro_rules! joiner {
             }
         }
 
-        impl<$($F, $O),*> Unpin for Joiner<($(FutStatus<$F, $O>,)*)>
+        impl<$($F),*> Unpin for Joiner<($(FutStatus<$F, $F::Output>,)*)>
         where
         $(
-            $F: Future<Output=$O> + Unpin,
-            $O: Unpin,
+            $F: Future + Unpin,
         )*
         {}
     }
