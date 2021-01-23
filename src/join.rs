@@ -8,11 +8,12 @@ use std::task::{Context, Poll};
 pub trait Join {
     type Future: Future;
 
+    /// (fut1, fut2, fut3).join().await
     fn join(self) -> Self::Future;
 }
 
-/// Implementation detail, but needs to be visible.
-pub struct JoinFutureStatus<F: Future>(FutStatus<F, F::Output>);
+/// Holds the future, or the value it generated.
+pub struct Holder<F: Future>(FutStatus<F, F::Output>);
 
 enum FutStatus<F, O> {
     Future(F),
@@ -56,7 +57,7 @@ macro_rules! output {
 
 macro_rules! join_impl {
     ($($F:ident, $N:tt),*) => {
-        impl<$($F),*> Future for JoinFuture<($(JoinFutureStatus<$F>,)*)>
+        impl<$($F),*> Future for JoinFuture<($(Holder<$F>,)*)>
         where
             $($F: Future,)*
         {
@@ -81,17 +82,16 @@ macro_rules! join_impl {
         where
             $($F: Future,)*
         {
-            type Future = JoinFuture<($(JoinFutureStatus<$F>,)*)>;
+            type Future = JoinFuture<($(Holder<$F>,)*)>;
     
-            /// (fut1, fut2, fut3).join().await
             fn join(self) -> Self::Future {
                 JoinFuture {
-                    tuples: ($(JoinFutureStatus(FutStatus::Future(self.$N)), )*)
+                    tuples: ($(Holder(FutStatus::Future(self.$N)), )*)
                 }
             }
         }
 
-        impl<$($F),*> Unpin for JoinFuture<($(JoinFutureStatus<$F>,)*)>
+        impl<$($F),*> Unpin for JoinFuture<($(Holder<$F>,)*)>
         where
         $(
             $F: Future + Unpin,

@@ -9,6 +9,7 @@ pub trait Select {
     type Future: Future<Output=Self::Output>;
     type Output;
 
+    /// (fut1, fut2, fut3).select().await
     fn select(self) -> Self::Future;
 }
 
@@ -62,7 +63,6 @@ macro_rules! select_impl {
             type Future = SelectFuture<($($F,)*)>;
             type Output = O;
     
-            /// (fut1, fut2, fut3).select().await
             fn select(self) -> Self::Future {
                 SelectFuture {
                     tuples: ($(self.$N,)*),

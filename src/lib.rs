@@ -9,7 +9,7 @@
 //! ### Example
 //!
 //! ```rust
-//! use tuple_fut::Select;
+//! use tuple_fut::Select as _;
 //!
 //! async fn ret11() -> u32 {
 //!   11
@@ -40,7 +40,7 @@
 //! ### Example
 //!
 //! ```rust
-//! use tuple_fut::Join;
+//! use tuple_fut::Join as _;
 //!
 //! async fn ret_u32() -> u32 {
 //!   23u32
