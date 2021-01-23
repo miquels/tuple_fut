@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -14,14 +13,13 @@ pub trait Select {
 }
 
 #[doc(hidden)]
-pub struct Selecter<T, O> {
+pub struct Selecter<T> {
     tuples: T,
-    output: PhantomData<O>,
 }
 
 macro_rules! selecter {
     ($num:expr, $($F:ident, $N:tt),*) => {
-        impl<$($F),*, O> Future for Selecter<($($F,)*), O>
+        impl<$($F),*, O> Future for Selecter<($($F,)*)>
         where
             $($F: Future<Output=O>),*,
         {
@@ -61,21 +59,19 @@ macro_rules! selecter {
         where
             $($F: Future<Output=O> ),*,
         {
-            type Future = Selecter<($($F,)*), O>;
+            type Future = Selecter<($($F,)*)>;
             type Output = O;
     
             fn select(self) -> Self::Future {
                 Selecter {
                     tuples: ($(self.$N,)*),
-                    output: PhantomData,
                 }
             }
         }
 
-        impl<$($F),*, O> Unpin for Selecter<($($F,)*), O>
+        impl<$($F),*> Unpin for Selecter<($($F,)*)>
         where
-            $($F: Future<Output=O> + Unpin),*,
-            O: Unpin,
+            $($F: Future + Unpin),*,
         {}
     }
 }
